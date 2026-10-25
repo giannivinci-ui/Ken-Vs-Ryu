@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ken vs Ryu – Street Arena HD</title>
+<title>Ken vs Ryu – Street Arena Online</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@600;700&display=swap">
 <style>
 :root{--bg:#0b0912;--fg:#f4ecd8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -22,6 +22,9 @@ button:focus-visible{outline:3px solid #fff}
 .pad div{display:flex;gap:8px}
 .pad button{width:64px;height:64px;padding:0;font-size:14px;border-radius:50%;background:#ffffff1f;box-shadow:none;border:2px solid #fff4}
 @media (pointer:coarse){.pad{display:flex}}
+.online{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
+input{font:700 20px Rajdhani,sans-serif;width:110px;text-align:center;text-transform:uppercase;padding:9px;border-radius:10px;border:2px solid #fff4;background:#ffffff14;color:var(--fg)}
+#st{min-height:1.5em;color:#f2b632}
 </style>
 </head>
 <body>
@@ -32,12 +35,15 @@ button:focus-visible{outline:3px solid #fff}
 <button data-m="2">Gioca come Ryu</button>
 <button data-m="3">2 giocatori</button>
 </div>
+<div class="online"><button id="host">Crea partita online</button><input id="code" maxlength="4" placeholder="Codice" autocapitalize="characters" autocomplete="off"><button id="join">Unisciti</button></div>
+<p class="help" id="st"></p>
 <div class="pad">
 <div><button data-k="KeyA">◀</button><button data-k="KeyD">▶</button><button data-k="KeyW">▲</button></div>
 <div><button data-k="KeyF">Pugno</button><button data-k="KeyG">Calcio</button><button data-k="KeyH">Fuoco</button></div>
 </div>
 <p class="help">Giocatore 1: A D muovi · W salta · F pugno · G calcio · H onda di fuoco<br>Giocatore 2: frecce muovi · K pugno · L calcio · ; onda di fuoco · Per parare tieni premuto indietro</p>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');
 const W=800,H=450,Z=1.6,GY=390,keys={};
@@ -121,7 +127,7 @@ body(f);if(f.flash>0&&f.flash%2){ctx.globalCompositeOperation='lighter';ctx.glob
 function big(f,x,y,s,face){const q=Object.assign({},f,{st:'idle',vx:0,y:GY,blk:false,flash:0,t:0});ctx.save();ctx.translate(x,y);ctx.scale(s*face,s);body(q);ctx.restore()}
 
 /* ---------- logica ---------- */
-function setup(m){mode=m;K.ctrl=m===1?'h':m===3?'p1':'cpu';R.ctrl=m===2?'h':m===3?'p2':'cpu';K.wins=R.wins=0;rnd=1;newRound();G='vs';tm=190}
+function setup(m){if(m<4&&net.role)netClose();mode=m;K.ctrl=m===1||m===4?'h':m===3?'p1':'cpu';R.ctrl=m===2?'h':m===3?'p2':m===4?'net':'cpu';K.wins=R.wins=0;rnd=1;newRound();G='vs';tm=190}
 function newRound(){[K,R].forEach((f,i)=>Object.assign(f,{x:i?580:220,y:GY,vx:0,vy:0,hp:100,tr:100,st:'idle',t:0,cd:0,flash:0,face:i?-1:1}));proj=[];timer=3600;G='intro';tm=100}
 function hum(f){const r={};const maps=f.ctrl==='p1'?[M1]:f.ctrl==='p2'?[M2]:[M1,M2];for(const m of maps)for(const a in m)if(keys[m[a]])r[a]=1;return r}
 function ai(f,o){const inp={},d=Math.abs(o.x-f.x),tw=o.x>f.x?'r':'l',aw=tw==='r'?'l':'r';
@@ -135,7 +141,7 @@ if(o.blk){dmg*=.12;o.vx=dir*3;o.flash=3;sfx(150,.05);shake=Math.max(shake,2);spa
 else{o.st='hurt';o.t=16;o.vx=dir*5;o.flash=6;sfx(220,.12);shake=Math.max(shake,dmg>9?9:6);spark(o.x-dir*12,o.y-82,16,'#fff2b0',7,20);spark(o.x-dir*12,o.y-82,10,'#ff7a2a',5,18)}
 o.hp=Math.max(0,o.hp-dmg);if(o.hp<=0){o.hp=0;o.st='ko';o.t=0;o.vy=-9;o.vx=dir*4;sfx(90,.4);shake=16;spark(o.x,o.y-80,30,'#ffd27a',9,30)}}
 function hitTest(f,o,A){const dx=(o.x-f.x)*f.face;if(dx>0&&dx<=A.reach+20&&Math.abs(o.y-f.y)<70&&o.st!=='ko'){f.did=true;hurt(o,A.dmg,f.face)}}
-function step(f,o){const inp=f.ctrl==='cpu'?ai(f,o):hum(f),air=f.y<GY;
+function step(f,o){const inp=f.ctrl==='cpu'?ai(f,o):f.ctrl==='net'?net.inp:hum(f),air=f.y<GY;
 f.fr++;if(f.cd>0)f.cd--;if(f.flash>0)f.flash--;f.blk=false;
 if(f.st==='ko'){f.t++;f.vx*=.94}
 else if(f.st==='hurt'){f.t--;f.vx*=.85;if(f.t<=0)f.st='idle'}
@@ -154,6 +160,7 @@ function update(){
 for(const p of PT){p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.l--}
 for(let i=PT.length-1;i>=0;i--)if(PT[i].l<=0)PT.splice(i,1);
 K.tr=Math.max(K.hp,K.tr-.5);R.tr=Math.max(R.hp,R.tr-.5);
+if(net.role==='guest'){for(const p of proj)spark(p.x-p.vx*2,p.y,2,'#ffa23a',2,14);return}
 if(G==='vs'){K.fr++;R.fr++;if(--tm<=0){G='intro';tm=100}return}
 if(G==='title'||G==='match'){K.fr++;R.fr++;return}
 step(K,R);step(R,K);
@@ -206,16 +213,41 @@ if(G==='intro')glow('#ff5a2a',24,()=>tx(tm>45?'ROUND '+rnd:'FIGHT!',400,215,tm>4
 if(G==='end'){glow('#ff5a2a',24,()=>tx(msg,400,215,130,'#ffd23a','center',6));if(tm<110)tx(winner?winner.name+' VINCE IL ROUND':'PAREGGIO',400,265,32,'#fff')}
 if(G==='match'){ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillRect(0,0,W,H);glow('#ff5a2a',24,()=>tx(winner.name+' VINCE!',400,215,110,'#ffd23a','center',6));if(Math.floor(Date.now()/500)%2)tx('INVIO O TOCCA PER RIGIOCARE',400,275,28,'#fff')}}
 
+/* ---------- online (PeerJS / WebRTC) ---------- */
+const net={role:null,conn:null,peer:null,inp:{}},FF=['x','y','vx','vy','face','hp','st','t','atk','fr','blk','flash','wins'];
+const st=m=>{document.getElementById('st').textContent=m};
+function netClose(){try{net.conn&&net.conn.close();net.peer&&net.peer.destroy()}catch(e){}net.role=null;net.conn=null;net.peer=null;net.inp={}}
+function myInput(){const r={};for(const m of[M1,M2])for(const a in m)if(keys[m[a]])r[a]=1;return r}
+function snap(){return{f:[K,R].map(f=>FF.map(k=>f[k])),p:proj.map(p=>[p.x,p.y,p.vx,p.o===K?0:1]),g:G,tm,tmr:timer,rnd,w:winner?winner.name:'',m:msg}}
+function netTick(){const c=net.conn;if(!c||!c.open)return;if(net.role==='host')c.send(snap());else if(net.role==='guest')c.send({i:myInput()})}
+function onSnap(s){if(!s||!s.f)return;[K,R].forEach((f,i)=>{const o=f.hp;FF.forEach((k,j)=>f[k]=s.f[i][j]);if(f.hp<o){const ko=f.st==='ko';spark(f.x,f.y-82,ko?30:16,'#fff2b0',7,20);shake=Math.max(shake,ko?16:7);sfx(ko?90:220,.12)}});
+proj=s.p.map(a=>({x:a[0],y:a[1],vx:a[2],o:a[3]?R:K}));G=s.g;tm=s.tm;timer=s.tmr;rnd=s.rnd;msg=s.m;winner=s.w==='KEN'?K:s.w==='RYU'?R:null}
+const PCFG={config:{iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'},{urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]}};
+function hostGame(){if(!window.Peer){st('Libreria online non caricata: controlla la connessione');return}netClose();
+const code=Array.from({length:4},()=>'ABCDEFGHJKMNPQRSTUVWXYZ'[Math.random()*23|0]).join('');
+const p=net.peer=new Peer('kvrhd-'+code,PCFG);net.role='host';
+p.on('open',()=>st('Codice partita: '+code+' – dillo al tuo amico e aspetta che si unisca'));
+p.on('error',e=>{if(e.type==='unavailable-id')hostGame();else st('Errore: '+(e.type||e))});p.on('disconnected',()=>{try{p.reconnect()}catch(e){}});
+p.on('connection',c=>{net.conn=c;c.on('open',()=>{st('Amico connesso: si gioca! Tu sei Ken');setup(4)});
+c.on('data',d=>{if(d.i)net.inp=d.i;if(d.again&&G==='match')setup(4)});
+c.on('close',()=>{st('Amico disconnesso');R.ctrl='cpu';net.conn=null})})}
+function joinGame(){if(!window.Peer){st('Libreria online non caricata: controlla la connessione');return}
+const code=document.getElementById('code').value.trim().toUpperCase();if(code.length<4){st('Inserisci il codice di 4 lettere');return}netClose();
+const p=net.peer=new Peer(undefined,PCFG);p.on('open',()=>{st('Mi collego…');setTimeout(()=>{if(net.role!=='guest')st('Non riesco a collegarmi. Controlla il codice, prova con lo stesso Wi-Fi oppure riprova')},15000);const c=net.conn=p.connect('kvrhd-'+code,{serialization:'json'});
+c.on('open',()=>{net.role='guest';st('Connesso: giochi come Ryu!')});c.on('data',onSnap);c.on('error',e=>st('Errore di connessione: '+(e.type||e)));
+c.on('close',()=>{netClose();G='title';st('Connessione chiusa')})});
+p.on('error',e=>st(e.type==='peer-unavailable'?'Codice non trovato: controlla e riprova':'Errore: '+(e.type||e)))}
 let last=performance.now(),acc=0;
-function loop(n){acc+=Math.min(100,n-last);last=n;while(acc>=1000/60){update();acc-=1000/60}draw();requestAnimationFrame(loop)}
+function loop(n){acc+=Math.min(100,n-last);last=n;while(acc>=1000/60){update();netTick();acc-=1000/60}draw();requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
 
-function onKey(c){if(G==='vs'&&(c==='Enter'||c==='Tap'))tm=1;if(G==='match'&&(c==='Enter'||c==='Tap'))setup(mode);if(c==='Digit1')setup(1);if(c==='Digit2')setup(2);if(c==='Digit3')setup(3)}
+function onKey(c){if(G==='vs'&&(c==='Enter'||c==='Tap'))tm=1;if(G==='match'&&(c==='Enter'||c==='Tap')){if(net.role==='guest'&&net.conn)net.conn.send({again:1});else if(net.role!=='guest')setup(mode)}if(c==='Digit1')setup(1);if(c==='Digit2')setup(2);if(c==='Digit3')setup(3)}
 addEventListener('keydown',e=>{keys[e.code]=1;if(/^(Arrow|Space)/.test(e.code))e.preventDefault();onKey(e.code)});
 addEventListener('keyup',e=>keys[e.code]=0);
 cv.addEventListener('pointerdown',()=>onKey('Tap'));
 document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{setup(+b.dataset.m);b.blur()});
 document.querySelectorAll('[data-k]').forEach(b=>{const c=b.dataset.k;b.addEventListener('pointerdown',e=>{e.preventDefault();keys[c]=1});['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,()=>keys[c]=0))});
+document.getElementById('host').onclick=hostGame;document.getElementById('join').onclick=joinGame;
 </script>
 </body>
 </html>
